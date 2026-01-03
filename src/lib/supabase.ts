@@ -33,3 +33,12 @@ export interface DbProcessedOrder {
   fabric_usage: Record<string, number>;
   processed_at: string;
 }
+
+export interface DbSetting {
+  id: string;
+  key: string;
+  value: string;
+  label: string;
+  description: string;
+  updated_at: string;
+}

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchOrders } from '@/lib/shopify';
-import { loadFabrics, calculateFabricCost, parseFabricRequirements } from '@/lib/fabrics';
+import { loadFabrics, calculateFabricCost, parseFabricRequirements, getSetting } from '@/lib/fabrics';
 import { OrderWithFabricUsage } from '@/types';
-
-const PRINT_COST_PER_METER = parseInt(process.env.PRINT_COST_PER_METER || '25');
 
 // GET /api/orders - Get all orders with fabric usage
 export async function GET(request: NextRequest) {
@@ -13,6 +11,10 @@ export async function GET(request: NextRequest) {
     
     const shopifyOrders = await fetchOrders(limit);
     const fabrics = await loadFabrics();
+    
+    // Get print cost from database settings
+    const printCostStr = await getSetting('print_cost_per_meter', '25');
+    const printCostPerMeter = parseInt(printCostStr);
     
     const ordersWithUsage: OrderWithFabricUsage[] = shopifyOrders.map(order => {
       let totalFabricCost = 0;
@@ -26,7 +28,7 @@ export async function GET(request: NextRequest) {
         const { totalCost } = calculateFabricCost(
           fabricRequirements,
           fabrics,
-          PRINT_COST_PER_METER
+          printCostPerMeter
         );
         
         const fabricCostPerUnit = totalCost;

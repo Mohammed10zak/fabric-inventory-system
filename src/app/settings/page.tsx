@@ -11,21 +11,46 @@ interface Webhook {
   createdAt: string;
 }
 
+interface Setting {
+  id: string;
+  key: string;
+  value: string;
+  label: string;
+  description: string;
+}
+
 export default function SettingsPage() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [settings, setSettings] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
   const [callbackUrl, setCallbackUrl] = useState('');
+  const [editingSettings, setEditingSettings] = useState<Record<string, string>>({});
+  const [savingSettings, setSavingSettings] = useState(false);
 
-  const fetchWebhooks = async () => {
+  const fetchData = async () => {
     try {
-      const res = await fetch('/api/webhooks/register');
-      const data = await res.json();
-      setWebhooks(data.webhooks || []);
+      const [webhooksRes, settingsRes] = await Promise.all([
+        fetch('/api/webhooks/register'),
+        fetch('/api/settings')
+      ]);
+      
+      const webhooksData = await webhooksRes.json();
+      const settingsData = await settingsRes.json();
+      
+      setWebhooks(webhooksData.webhooks || []);
+      setSettings(settingsData.settings || []);
+      
+      // Initialize editing values
+      const editValues: Record<string, string> = {};
+      (settingsData.settings || []).forEach((s: Setting) => {
+        editValues[s.key] = s.value;
+      });
+      setEditingSettings(editValues);
     } catch (err) {
-      setError('Failed to load webhooks');
+      setError('Failed to load data');
       console.error(err);
     } finally {
       setLoading(false);
@@ -33,9 +58,8 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    fetchWebhooks();
+    fetchData();
     
-    // Set default callback URL based on current location
     if (typeof window !== 'undefined') {
       const baseUrl = window.location.origin;
       setCallbackUrl(`${baseUrl}/api/webhooks/order`);
@@ -65,8 +89,8 @@ export default function SettingsPage() {
         throw new Error(data.error?.message || JSON.stringify(data.error) || 'Failed to register');
       }
 
-      setSuccess('Webhook registered successfully! New orders will now auto-subtract fabric.');
-      fetchWebhooks();
+      setSuccess('Webhook registered successfully!');
+      fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to register webhook');
     } finally {
@@ -84,20 +108,53 @@ export default function SettingsPage() {
         method: 'DELETE'
       });
       setSuccess('Webhook deleted');
-      fetchWebhooks();
+      fetchData();
     } catch (err) {
       setError('Failed to delete webhook');
     }
   };
 
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      for (const setting of settings) {
+        if (editingSettings[setting.key] !== setting.value) {
+          const res = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              key: setting.key, 
+              value: editingSettings[setting.key] 
+            })
+          });
+
+          if (!res.ok) {
+            throw new Error(`Failed to update ${setting.label}`);
+          }
+        }
+      }
+
+      setSuccess('Settings saved successfully!');
+      fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const hasOrderWebhook = webhooks.some(w => w.topic === 'ORDERS_CREATE');
+  const hasSettingsChanges = settings.some(s => editingSettings[s.key] !== s.value);
 
   return (
     <div className="animate-fade-in">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Settings</h1>
         <p className="text-[var(--color-text-muted)] mt-1">
-          Configure automatic inventory updates
+          Configure system settings and webhooks
         </p>
       </div>
 
@@ -117,7 +174,53 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Status Card */}
+      {/* Fabric Configuration Settings */}
+      <div className="card p-6 mb-6">
+        <h2 className="text-xl font-semibold mb-4">⚙️ Fabric Configuration</h2>
+        <p className="text-[var(--color-text-muted)] mb-6">
+          Configure costs and thresholds for fabric calculations
+        </p>
+
+        {loading ? (
+          <div className="space-y-4">
+            <div className="skeleton h-12 w-full"></div>
+            <div className="skeleton h-12 w-full"></div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {settings.map(setting => (
+              <div key={setting.id} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 p-4 bg-[var(--color-bg)] rounded-lg">
+                <div className="flex-1">
+                  <label className="block font-medium">{setting.label}</label>
+                  <p className="text-sm text-[var(--color-text-muted)]">{setting.description}</p>
+                </div>
+                <div className="w-full md:w-32">
+                  <input
+                    type="number"
+                    value={editingSettings[setting.key] || ''}
+                    onChange={e => setEditingSettings({
+                      ...editingSettings,
+                      [setting.key]: e.target.value
+                    })}
+                    className="input text-center"
+                    min="0"
+                  />
+                </div>
+              </div>
+            ))}
+
+            <button
+              onClick={handleSaveSettings}
+              disabled={savingSettings || !hasSettingsChanges}
+              className="btn btn-primary mt-4"
+            >
+              {savingSettings ? 'Saving...' : hasSettingsChanges ? '💾 Save Changes' : 'No Changes'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Webhook Status */}
       <div className="card p-6 mb-6">
         <div className="flex items-center gap-4 mb-4">
           <div className={`w-4 h-4 rounded-full ${hasOrderWebhook ? 'bg-[var(--color-success)]' : 'bg-[var(--color-warning)]'}`}></div>
@@ -137,10 +240,9 @@ export default function SettingsPage() {
 
       {/* Register Webhook */}
       <div className="card p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Register Order Webhook</h2>
+        <h2 className="text-xl font-semibold mb-4">🔗 Register Order Webhook</h2>
         <p className="text-[var(--color-text-muted)] mb-4">
           This webhook tells Shopify to notify your app when new orders are placed.
-          The app will then automatically subtract fabric from inventory.
         </p>
         
         <div className="space-y-4">
@@ -153,9 +255,6 @@ export default function SettingsPage() {
               placeholder="https://your-app.vercel.app/api/webhooks/order"
               className="input"
             />
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              ⚠️ Must be a public HTTPS URL (won't work with localhost)
-            </p>
           </div>
           
           <button
@@ -173,11 +272,7 @@ export default function SettingsPage() {
         <h2 className="text-xl font-semibold mb-4">Registered Webhooks</h2>
         
         {loading ? (
-          <div className="space-y-3">
-            {[1, 2].map(i => (
-              <div key={i} className="skeleton h-16 w-full"></div>
-            ))}
-          </div>
+          <div className="skeleton h-16 w-full"></div>
         ) : webhooks.length === 0 ? (
           <p className="text-[var(--color-text-muted)] text-center py-8">
             No webhooks registered yet
@@ -208,33 +303,6 @@ export default function SettingsPage() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* How It Works */}
-      <div className="card p-6 mt-6">
-        <h2 className="text-xl font-semibold mb-4">How Auto-Subtract Works</h2>
-        <div className="space-y-4 text-[var(--color-text-muted)]">
-          <div className="flex gap-3">
-            <span className="text-2xl">1️⃣</span>
-            <p>Customer places order on your Shopify store</p>
-          </div>
-          <div className="flex gap-3">
-            <span className="text-2xl">2️⃣</span>
-            <p>Shopify sends order details to your webhook URL</p>
-          </div>
-          <div className="flex gap-3">
-            <span className="text-2xl">3️⃣</span>
-            <p>Your app looks up each product's fabric requirements</p>
-          </div>
-          <div className="flex gap-3">
-            <span className="text-2xl">4️⃣</span>
-            <p>Fabric is automatically subtracted from inventory</p>
-          </div>
-          <div className="flex gap-3">
-            <span className="text-2xl">5️⃣</span>
-            <p>If stock falls below 10m, you'll see a warning on Dashboard</p>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -306,3 +306,77 @@ export function parseFabricRequirements(metafieldValue: string | null): FabricRe
     return null;
   }
 }
+
+
+// Get all settings
+export async function loadSettings(): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*');
+
+  if (error) {
+    console.error('Error loading settings:', error);
+    return {
+      print_cost_per_meter: '25',
+      low_stock_threshold: '10'
+    };
+  }
+
+  const settings: Record<string, string> = {};
+  (data || []).forEach(s => {
+    settings[s.key] = s.value;
+  });
+
+  return settings;
+}
+
+// Get single setting
+export async function getSetting(key: string, defaultValue: string = ''): Promise<string> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', key)
+    .single();
+
+  if (error || !data) {
+    return defaultValue;
+  }
+
+  return data.value;
+}
+
+// Update setting
+export async function updateSetting(key: string, value: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('settings')
+    .update({ value, updated_at: new Date().toISOString() })
+    .eq('key', key);
+
+  if (error) {
+    console.error('Error updating setting:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Get all settings with details (for settings page)
+export async function loadSettingsWithDetails(): Promise<Array<{
+  id: string;
+  key: string;
+  value: string;
+  label: string;
+  description: string;
+}>> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .order('key');
+
+  if (error) {
+    console.error('Error loading settings:', error);
+    return [];
+  }
+
+  return data || [];
+}

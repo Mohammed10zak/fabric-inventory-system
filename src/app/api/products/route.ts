@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchProducts } from '@/lib/shopify';
-import { loadFabrics, calculateFabricCost, parseFabricRequirements } from '@/lib/fabrics';
+import { loadFabrics, calculateFabricCost, parseFabricRequirements, getSetting } from '@/lib/fabrics';
 import { ProductWithFabricCost } from '@/types';
-
-const PRINT_COST_PER_METER = parseInt(process.env.PRINT_COST_PER_METER || '25');
 
 // GET /api/products - Get all products with fabric costs
 export async function GET(request: NextRequest) {
@@ -11,12 +9,16 @@ export async function GET(request: NextRequest) {
     const shopifyProducts = await fetchProducts();
     const fabrics = await loadFabrics();
     
+    // Get print cost from database settings
+    const printCostStr = await getSetting('print_cost_per_meter', '25');
+    const printCostPerMeter = parseInt(printCostStr);
+    
     const productsWithCosts: ProductWithFabricCost[] = shopifyProducts.map(product => {
       const fabricRequirements = parseFabricRequirements(product.metafield?.value || null);
       const { totalCost, breakdown } = calculateFabricCost(
         fabricRequirements,
         fabrics,
-        PRINT_COST_PER_METER
+        printCostPerMeter
       );
       
       return {
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ 
       products: filteredProducts,
       count: filteredProducts.length,
-      printCostPerMeter: PRINT_COST_PER_METER
+      printCostPerMeter
     });
   } catch (error) {
     console.error('Error fetching products:', error);
