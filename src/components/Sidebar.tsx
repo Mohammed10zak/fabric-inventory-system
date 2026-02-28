@@ -8,7 +8,6 @@ const navigation = [
   { name: 'Products', href: '/products', icon: '👗' },
   { name: 'Orders', href: '/orders', icon: '📦' },
   { name: 'Inventory', href: '/inventory', icon: '🏭' },
-  { name: 'Import', href: '/import', icon: '📥' },
   { name: 'Fabrics', href: '/fabrics', icon: '🧵' },
   { name: 'Settings', href: '/settings', icon: '⚙️' },
 ];
